@@ -1,6 +1,6 @@
 # Kinematic Lab
 
-브라우저에서 동작하는 무학습 영상 분석 도구입니다. 영상에서 움직이는 영역을 검출하고 객체별 바운딩 박스, 궤적, 위치·속도·수직 가속도 및 선택적 충격량 추정치를 표시합니다. 영상은 브라우저 안에서 처리되며 서버로 업로드되지 않습니다.
+브라우저에서 동작하는 영상 운동 측정 도구입니다. 영상에서 움직이는 영역을 검출하고 대상별 바운딩 박스, 궤적, 위치·속도·수직 가속도 및 선택적 충격량 추정치를 표시합니다. 영상은 브라우저 안에서 처리되며 서버로 업로드되지 않습니다.
 
 ## 실행
 
@@ -10,10 +10,10 @@
 
 1. 고정 카메라로 촬영한 MP4, MOV 또는 WebM 영상을 엽니다.
 2. 대상 형태(자유 형태, 원형, 막대), 검출 민감도, 최소 면적과 최대 객체 수를 조정합니다.
-3. 실제 단위 측정이 필요하면 알려진 길이(cm)와 영상 속 그 길이(px)를 입력합니다. 두 값 중 하나라도 없으면 좌표·속도·가속도는 작업 영상의 픽셀 단위입니다.
+3. 실제 단위 측정이 필요하면 알려진 길이(cm)와 영상 속 그 길이(px)를 입력합니다. 보정하면 실제 단위와 원본 영상 px를 함께 표시하며, 값이 100 cm 이상이면 m 환산도 표시합니다. 보정하지 않으면 원본 영상 px 단위입니다.
 4. 충격량을 계산하려면 길이 보정과 대상 질량(kg)을 모두 입력합니다.
 5. 분석을 시작합니다. 색이 지정된 박스는 검출 영역의 축 정렬 바운딩 박스이며 라벨에 추적 ID와 작업 프레임 기준 폭×높이(px)가 표시됩니다. 궤적 표시를 끄면 이동 경로 선만 숨겨집니다.
-6. 결과 표에는 검출 프레임 수, 시작 위치, 총 이동 거리, 최대 속도 및 내부 검출 점수 기반의 참고용 신뢰도가 나옵니다. CSV에는 프레임별 중심 좌표, 박스 크기, 속도 등이 기록됩니다.
+6. 결과 표에는 검출 프레임 수, 시작 위치, 총 이동 거리, 최대 속도 및 궤적 구간 내 검출 프레임의 비율(추적 연속률)이 나옵니다. 연속률은 검출 정확도나 실제 위치 오차를 나타내지 않습니다. CSV에는 프레임별 px 좌표와 보정 좌표, 박스 크기, 속도 등이 기록됩니다.
 
 ## 계산 방식과 제한
 
@@ -26,7 +26,7 @@
 
 ## English
 
-Kinematic Lab is a browser-based, training-free video analysis tool. It detects moving regions and displays per-track bounding boxes, trails, position, speed, vertical acceleration, and an optional impulse estimate. Video is processed locally in the browser and is not uploaded to a server.
+Kinematic Lab is a browser-based video motion measurement tool. It detects moving regions and displays per-track bounding boxes, trails, position, speed, vertical acceleration, and an optional impulse estimate. Video is processed locally in the browser and is not uploaded to a server.
 
 ### Run
 
@@ -36,10 +36,10 @@ Open `index.html` in a modern browser, or host `index.html`, `styles.css`, and `
 
 1. Open an MP4, MOV, or WebM video, preferably recorded with a stationary camera.
 2. Choose a target shape and tune sensitivity, minimum component area, and maximum object count.
-3. For measurements in real units, enter a known length in centimeters and its length in source-video pixels. Otherwise, position, speed, and acceleration are reported in work-image pixels.
+3. For measurements in real units, enter a known length in centimeters and its length in source-video pixels. Calibrated results include both physical units and source-video pixels; otherwise, results use source-video pixels.
 4. Enter both a length calibration and target mass in kilograms to estimate impulse.
 5. Start analysis. Each colored rectangle is an axis-aligned bounding box around a detected foreground component. Its label shows the track ID and box width × height in work-image pixels. Turning off trail display hides the path line.
-6. The results table reports detected sample count, starting position, total path length, maximum speed, and a heuristic detection score. The CSV contains per-sample center coordinates, box dimensions, speed, and other available measurements.
+6. The results table reports detected sample count, starting position, total path length, maximum speed, and track continuity (the detected-frame share within each track's span). Continuity does not measure detection accuracy or position error. The CSV contains per-sample pixel and calibrated coordinates, box dimensions, speed, and other available measurements.
 
 ### Method and limitations
 

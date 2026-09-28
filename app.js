@@ -32,7 +32,7 @@
   video.addEventListener('volumechange', () => $('muteBtn').textContent = video.muted ? '×' : '◖');
   $('muteBtn').onclick = () => video.muted = !video.muted;
   $('fullscreenBtn').onclick = () => $('player').requestFullscreen?.();
-  $('resetBtn').onclick = () => { if (analysis) return; tracks = []; samples = []; ctx.clearRect(0, 0, overlay.width, overlay.height); $('emptyOverlay').classList.remove('hidden'); $('videoBadge').textContent = 'READY'; $('metricStatus').textContent = '대기 중'; $('metricObjects').textContent = '—'; $('metricSpeed').textContent = '—'; $('metricAccel').textContent = '—'; $('metricImpulse').textContent = '—'; $('impulseUnit').textContent = '질량 입력 필요'; $('resultsBody').innerHTML = '<tr class="placeholder"><td colspan="6">영상을 추가하고 분석을 시작하면 결과가 표시됩니다.</td></tr>'; $('downloadBtn').disabled = true; };
+  $('resetBtn').onclick = () => { if (analysis) return; tracks = []; samples = []; ctx.clearRect(0, 0, overlay.width, overlay.height); $('emptyOverlay').classList.remove('hidden'); $('videoBadge').textContent = 'READY'; $('metricStatus').textContent = '대기 중'; $('metricObjects').textContent = '—'; $('metricSpeed').textContent = '—'; $('metricAccel').textContent = '—'; $('metricImpulse').textContent = '—'; $('metricTracking').textContent = '—'; $('speedUnit').textContent = '분석 후 계산'; $('accelUnit').textContent = '화면 y축 양수 · 포물선 근사'; $('impulseUnit').textContent = '질량 입력 필요'; $('resultsBody').innerHTML = '<tr class="placeholder"><td colspan="6">영상을 추가하고 분석을 시작하면 결과가 표시됩니다.</td></tr>'; $('downloadBtn').disabled = true; };
   function updateClock() {
     const t = video.currentTime || 0, d = video.duration || 0;
     $('timeLabel').textContent = `${stamp(t)} / ${stamp(d)}`; $('seek').value = d ? t / d * 1000 : 0;
@@ -56,7 +56,8 @@
       ctx.fillStyle = track.color + '18'; ctx.fillRect(x - bw / 2, y - bh / 2, bw, bh);
       ctx.strokeStyle = track.color; ctx.lineWidth = Math.max(2.5, overlay.width / 420); ctx.strokeRect(x - bw / 2, y - bh / 2, bw, bh);
       const fontSize = Math.max(12, overlay.width / 65); ctx.font = `700 ${fontSize}px sans-serif`;
-      const label = `T${track.id}  ${Math.round(p.w)}×${Math.round(p.h)} px`;
+      const sourcePx = video.videoWidth / work.width, physical = hasCalibration() ? ` · ${(p.w * sourcePx * scaleValue()).toFixed(1)}×${(p.h * sourcePx * scaleValue()).toFixed(1)} cm` : '';
+      const label = `T${track.id}  ${Math.round(p.w * sourcePx)}×${Math.round(p.h * sourcePx)} px${physical}`;
       const labelW = ctx.measureText(label).width + 12, labelH = fontSize + 8, labelX = Math.max(0, Math.min(overlay.width - labelW, x - bw / 2));
       const labelY = Math.max(labelH, y - bh / 2);
       ctx.fillStyle = track.color; ctx.fillRect(labelX, labelY - labelH, labelW, labelH);
@@ -77,6 +78,7 @@
     work.width = targetW; work.height = targetH;
     const sampleStep = Math.max(1 / 30, duration / 420), times = [];
     for (let t = 0; t < duration; t += sampleStep) times.push(t);
+    samples = times;
     if (times.length < 2) times.push(duration * .9);
     const bgCount = Math.min(7, times.length);
     const bgTimes = Array.from({ length: bgCount }, (_, i) => times[Math.round(i * (times.length - 1) / Math.max(1, bgCount - 1))]);
@@ -163,15 +165,27 @@
     const x = (start.x / work.width * video.videoWidth) * sourceScale, y = (start.y / work.height * video.videoHeight) * sourceScale;
     return { distance, maxSpeed, maxDeltaV, x, y };
   }
+  function trackStatsRaw(t) {
+    const pts = t.points, sx = video.videoWidth / work.width, sy = video.videoHeight / work.height;
+    let distance = 0, maxSpeed = 0;
+    for (let i = 1; i < pts.length; i++) { const dt = pts[i].t - pts[i - 1].t, dx = (pts[i].x - pts[i - 1].x) * sx, dy = (pts[i].y - pts[i - 1].y) * sy; distance += Math.hypot(dx, dy); if (dt > 0) maxSpeed = Math.max(maxSpeed, Math.hypot(dx, dy) / dt); }
+    return { distance, maxSpeed, x: pts[0].x * sx, y: pts[0].y * sy };
+  }
+  function physicalPair(cm, perSecond = '') { return `${cm.toFixed(1)} cm${perSecond}${Math.abs(cm) >= 100 ? ` · ${(cm / 100).toFixed(2)} m${perSecond}` : ''}`; }
   function summarize() {
-    let speed = 0, accels = [];
-    tracks.forEach(t => { const s = trackStats(t); speed = Math.max(speed, s.maxSpeed); const pts = t.points; if (pts.length >= 4) { const sy = scaleValue() * video.videoHeight / work.height; const reg = regression(pts.map(p => [p.t, p.y * sy])); if (reg) accels.push(reg.a * 2); } });
-    const unit = hasCalibration() ? 'cm/s' : 'px/s'; $('metricSpeed').textContent = speed ? speed.toFixed(1) : '—'; $('speedUnit').textContent = speed ? unit : '속도 계산 불가';
+    let speed = 0, pixelSpeed = 0, accels = [], pixelAccels = [];
+    tracks.forEach(t => { const s = trackStats(t); speed = Math.max(speed, s.maxSpeed); const raw = trackStatsRaw(t); pixelSpeed = Math.max(pixelSpeed, raw.maxSpeed); const pts = t.points; if (pts.length >= 4) { const reg = regression(pts.map(p => [p.t, p.y * scaleValue() * video.videoHeight / work.height])); const rawReg = regression(pts.map(p => [p.t, p.y * video.videoHeight / work.height])); if (reg) accels.push(reg.a * 2); if (rawReg) pixelAccels.push(rawReg.a * 2); } });
+    $('metricSpeed').textContent = tracks.length ? (hasCalibration() ? physicalPair(speed, '/s') : `${pixelSpeed.toFixed(1)} px/s`) : '—';
+    $('speedUnit').textContent = hasCalibration() ? `픽셀 환산 ${pixelSpeed.toFixed(1)} px/s` : '실제 단위는 길이 보정 필요';
     const accel = accels.length ? accels.reduce((a, b) => a + b, 0) / accels.length : NaN;
-    $('metricAccel').textContent = Number.isFinite(accel) ? `${accel.toFixed(1)} ${hasCalibration() ? 'cm' : 'px'}/s²` : '—';
+    $('metricAccel').textContent = Number.isFinite(accel) ? (hasCalibration() ? physicalPair(accel, '/s²') : `${accel.toFixed(1)} px/s²`) : '—';
+    const pixelAccel = pixelAccels.length ? pixelAccels.reduce((a, b) => a + b, 0) / pixelAccels.length : NaN;
+    $('accelUnit').textContent = hasCalibration() ? `픽셀 환산 ${Number.isFinite(pixelAccel) ? `${pixelAccel.toFixed(1)} px/s²` : '계산 불가'}` : '화면 y축 양수 · 포물선 근사';
     const mass = +$('massKg').value;
     if (mass > 0 && hasCalibration()) { const impulse = Math.max(0, ...tracks.map(t => trackStats(t).maxDeltaV * mass / 100)); $('metricImpulse').textContent = `${impulse.toFixed(3)} N·s`; $('impulseUnit').textContent = '최대 |m·Δv| 추정'; }
     else { $('metricImpulse').textContent = '—'; $('impulseUnit').textContent = mass > 0 ? '길이 보정도 필요' : '질량 입력 필요'; }
+    const continuity = tracks.length ? Math.round(100 * tracks.reduce((sum, t) => sum + t.points.length / Math.max(1, t.points.at(-1).frame - t.points[0].frame + 1), 0) / tracks.length) : NaN;
+    $('metricTracking').textContent = Number.isFinite(continuity) ? `${continuity}%` : '—';
   }
   $('massKg').addEventListener('input', () => { if (tracks.length && !analysis) summarize(); });
   function regression(points) {
@@ -183,13 +197,17 @@
   }
   function renderResults() {
     if (!tracks.length) { $('resultsBody').innerHTML = '<tr class="placeholder"><td colspan="6">움직이는 대상을 검출하지 못했습니다. 대비와 민감도 설정을 확인하세요.</td></tr>'; return; }
-    $('resultsBody').innerHTML = tracks.map((t, i) => { const s = trackStats(t), unit = hasCalibration() ? 'cm' : 'px', speedUnit = unit + '/s';
-      return `<tr><td><span class="track-id" style="color:${t.color}">● T${i+1}</span></td><td>${t.points.length}</td><td>(${s.x.toFixed(1)}, ${s.y.toFixed(1)}) ${unit}</td><td>${s.distance.toFixed(1)} ${unit}</td><td>${s.maxSpeed.toFixed(1)} ${speedUnit}</td><td><span class="conf">${Math.min(99, Math.round(58 + t.points.length / Math.max(1, samples.length) * 40))}%</span></td></tr>`;
+    $('resultsBody').innerHTML = tracks.map((t, i) => { const s = trackStats(t), px = trackStatsRaw(t), coverage = Math.round(100 * t.points.length / Math.max(1, t.points.at(-1).frame - t.points[0].frame + 1));
+      const position = hasCalibration() ? `<span class="value-main">(${s.x.toFixed(1)}, ${s.y.toFixed(1)}) cm</span><small>(${px.x.toFixed(0)}, ${px.y.toFixed(0)}) px</small>` : `(${px.x.toFixed(0)}, ${px.y.toFixed(0)}) px`;
+      const distance = hasCalibration() ? `<span class="value-main">${physicalPair(s.distance)}</span><small>${px.distance.toFixed(1)} px</small>` : `${px.distance.toFixed(1)} px`;
+      const speed = hasCalibration() ? `<span class="value-main">${physicalPair(s.maxSpeed, '/s')}</span><small>${px.maxSpeed.toFixed(1)} px/s</small>` : `${px.maxSpeed.toFixed(1)} px/s`;
+      return `<tr><td><span class="track-id" style="color:${t.color}">● T${i+1}</span></td><td>${t.points.length}</td><td>${position}</td><td>${distance}</td><td>${speed}</td><td><span class="conf">${coverage}%</span></td></tr>`;
     }).join('');
   }
+  ['knownLength', 'pixelLength'].forEach(id => $(id).addEventListener('input', () => { if (tracks.length && !analysis) { renderResults(); summarize(); draw(); } }));
   $('downloadBtn').onclick = () => {
-    const rows = [['track_id','time_s','frame_sample','x','y','box_width_work_px','box_height_work_px','speed','acceleration_y','impulse_magnitude','unit']];
-    tracks.forEach((t, i) => t.points.forEach((p, j) => { const scale=scaleValue()*video.videoWidth/work.width, yScale=scaleValue()*video.videoHeight/work.height, unit=hasCalibration()?'cm':'px'; let speed='', acceleration='', impulse=''; if(j){const q=t.points[j-1],dt=p.t-q.t;speed=dt>0?(Math.hypot((p.x-q.x)*scale,(p.y-q.y)*yScale)/dt).toFixed(4):''; if(j>1){const r=t.points[j-2],dt0=q.t-r.t,dt1=p.t-q.t;if(dt0>0&&dt1>0){const vx0=(q.x-r.x)*scale/dt0,vy0=(q.y-r.y)*yScale/dt0,vx1=(p.x-q.x)*scale/dt1,vy1=(p.y-q.y)*yScale/dt1;acceleration=((vy1-vy0)/((dt0+dt1)/2)).toFixed(4);const mass=+$('massKg').value;if(mass>0&&hasCalibration())impulse=(mass*Math.hypot(vx1-vx0,vy1-vy0)/100).toFixed(6);}}} rows.push([`T${i+1}`,p.t.toFixed(4),p.frame,(p.x*scale).toFixed(3),(p.y*yScale).toFixed(3),p.w,p.h,speed,acceleration,impulse,unit]); }));
+    const rows = [['track_id','time_s','frame_sample','x_px','y_px','x_cm','y_cm','box_width_work_px','box_height_work_px','speed','acceleration_y','impulse_magnitude','physical_unit']];
+    tracks.forEach((t, i) => t.points.forEach((p, j) => { const pxScale=video.videoWidth/work.width, pyScale=video.videoHeight/work.height, scale=scaleValue(), yScale=scale*pyScale, unit=hasCalibration()?'cm':'px'; let speed='', acceleration='', impulse=''; if(j){const q=t.points[j-1],dt=p.t-q.t;speed=dt>0?(Math.hypot((p.x-q.x)*pxScale*scale,(p.y-q.y)*pyScale*scale)/dt).toFixed(4):''; if(j>1){const r=t.points[j-2],dt0=q.t-r.t,dt1=p.t-q.t;if(dt0>0&&dt1>0){const vx0=(q.x-r.x)*pxScale*scale/dt0,vy0=(q.y-r.y)*yScale/dt0,vx1=(p.x-q.x)*pxScale*scale/dt1,vy1=(p.y-q.y)*yScale/dt1;acceleration=((vy1-vy0)/((dt0+dt1)/2)).toFixed(4);const mass=+$('massKg').value;if(mass>0&&hasCalibration())impulse=(mass*Math.hypot(vx1-vx0,vy1-vy0)/100).toFixed(6);}}} rows.push([`T${i+1}`,p.t.toFixed(4),p.frame,(p.x*pxScale).toFixed(3),(p.y*pyScale).toFixed(3),hasCalibration()?(p.x*pxScale*scale).toFixed(3):'',hasCalibration()?(p.y*pyScale*scale).toFixed(3):'',p.w,p.h,speed,acceleration,impulse,unit]); }));
     const csv = rows.map(r => r.map(v => `"${String(v).replaceAll('"','""')}"`).join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'})); a.download='kinematic-tracks.csv'; a.click(); URL.revokeObjectURL(a.href);
   };
 })();

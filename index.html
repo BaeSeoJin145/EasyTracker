@@ -2,19 +2,19 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0b1012"><title>Kinematic Lab — 무학습 영상 분석</title>
+  <meta name="theme-color" content="#0b1012"><title>Kinematic Lab — 영상 운동 측정</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar"><a class="brand" href="#"><span class="brand-mark">K</span><span>KINEMATIC <b>LAB</b><small>VIDEO ANALYSIS · NO TRAINING</small></span></a><div class="top-right"><span class="local-badge"><i></i> 영상은 이 기기에서 처리됩니다</span><span class="version">BROWSER BUILD 01</span></div></header>
+  <header class="topbar"><a class="brand" href="#"><span class="brand-mark">K</span><span>KINEMATIC <b>LAB</b><small>영상 운동 측정</small></span></a><div class="top-right"><span class="local-badge"><i></i> 영상은 이 기기에서 처리됩니다</span></div></header>
   <main>
-    <section class="intro"><div><div class="eyebrow">PHYSICS VIDEO WORKSPACE <span>01 / TRACK</span></div><h1>영상에서 운동을<br><em>측정 가능한 데이터</em>로.</h1><p>학습 데이터나 사전 객체 지정 없이 움직임을 검출하고 궤적과 물리량을 추정합니다.<br>영상은 업로드되어도 서버로 전송되지 않습니다.</p></div><div class="intro-stamp"><span>NO MODEL</span><b>●</b><span>JUST MOTION</span></div></section>
+    <section class="intro"><div><div class="eyebrow">영상 운동 분석 <span>01 / 추적</span></div><h1>영상 속 움직임을<br><em>수치로 측정합니다.</em></h1><p>움직이는 대상의 궤적과 위치·속도를 확인하세요.<br>영상은 이 기기에서 처리됩니다.</p></div></section>
     <section class="workspace">
       <aside class="sidebar">
         <div class="panel-head"><span class="step">01</span><div><h2>분석 설정</h2><p>영상에 맞는 조건을 지정하세요</p></div></div>
         <label class="field-label">실험 대상의 형태 <span>선택 사항</span></label><div class="shape-select"><button class="shape active" data-shape="any"><b>◉</b>자유 형태</button><button class="shape" data-shape="circle"><b>●</b>공 / 원형</button><button class="shape" data-shape="rod"><b>━</b>막대</button></div>
         <div class="input-grid"><label><span>기준 길이</span><div class="input-wrap"><input id="knownLength" type="number" min="0.01" step="any" placeholder="예: 5"><span>cm</span></div></label><label><span>영상 속 길이</span><div class="input-wrap"><input id="pixelLength" type="number" min="1" step="any" placeholder="예: 120"><span>px</span></div></label></div>
-        <p class="hint">눈금자나 알려진 물체 길이를 입력하면 실제 단위로 환산합니다. 비워 두면 픽셀 단위로 표시합니다.</p>
+        <p class="hint">실제 길이와 영상에서 잰 길이(px)를 입력하면 cm·m와 px를 함께 표시합니다. 보정하지 않으면 px만 표시합니다.</p>
         <label class="field-label mass-label">추적 대상 질량 <span>충격량 계산 선택 사항</span></label><div class="input-wrap"><input id="massKg" type="number" min="0.000001" step="any" placeholder="예: 0.15"><span>kg</span></div><p class="hint">질량을 입력하면 속도 변화로부터 충격량을 근사합니다. 접촉 시간/힘은 직접 측정하지 않습니다.</p>
         <div class="divider"></div><div class="section-label">검출 민감도 <span id="thresholdValue">32</span></div><input id="threshold" class="range" type="range" min="10" max="100" value="32"><div class="range-ends"><span>더 민감</span><span>오검출 감소</span></div>
         <div class="input-grid compact"><label><span>최소 검출 면적</span><div class="input-wrap"><input id="minArea" type="number" min="4" value="90"><span>px²</span></div></label><label><span>최대 추적 대상</span><div class="input-wrap"><input id="maxObjects" type="number" min="1" max="12" value="4"><span>개</span></div></label></div>
@@ -25,9 +25,9 @@
         <div id="dropzone" class="dropzone"><div class="upload-card"><div class="upload-icon">↑</div><h2>실험 영상을 여기에 놓으세요</h2><p>MP4, MOV, WebM · 영상은 이 기기에서 처리됩니다</p><button id="chooseBtn" class="secondary">영상 파일 선택 <span>⌘ O</span></button><input id="fileInput" type="file" accept="video/*" hidden><div class="drop-foot"><span>권장: 고정 카메라 · 단색 배경 · 선명한 대비</span><span>최대 250 MB</span></div></div></div>
         <div id="player" class="player hidden"><video id="video" playsinline></video><canvas id="overlay"></canvas><div id="emptyOverlay" class="empty-overlay"><span>분석을 시작하면 검출 결과가 여기에 표시됩니다</span></div><div class="video-badge" id="videoBadge">READY</div><div class="play-controls"><button id="playBtn">▶</button><span id="timeLabel">00:00.0 / 00:00.0</span><input id="seek" type="range" min="0" max="1000" value="0"><button id="muteBtn">◖</button></div></div>
         <div class="timeline-row"><span>FRAME TIMELINE</span><div class="timeline-track"><div class="timeline-progress" id="timelineProgress"></div><i id="timelineDot"></i></div><span id="frameLabel">— / —</span></div>
-        <div class="metrics"><article><span class="metric-name">검출 객체 <i>ⓘ</i></span><strong id="metricObjects">—</strong><small>추적된 궤적</small></article><article><span class="metric-name">최대 속도</span><strong id="metricSpeed">—</strong><small id="speedUnit">분석 후 계산</small></article><article><span class="metric-name">수직 가속도</span><strong id="metricAccel">—</strong><small>화면 y축 양수 · 포물선 근사</small></article><article><span class="metric-name">최대 충격량</span><strong id="metricImpulse">—</strong><small id="impulseUnit">질량 입력 필요</small></article><article class="quality-card"><span class="metric-name">분석 상태</span><strong id="metricStatus" class="status-text">대기 중</strong><div class="quality-track"><i id="qualityBar"></i></div></article></div>
+        <div class="metrics"><article><span class="metric-name">검출 객체</span><strong id="metricObjects">—</strong><small>추적된 궤적</small></article><article><span class="metric-name">최대 속도</span><strong id="metricSpeed">—</strong><small id="speedUnit">분석 후 계산</small></article><article><span class="metric-name">수직 가속도</span><strong id="metricAccel">—</strong><small id="accelUnit">화면 y축 양수 · 포물선 근사</small></article><article><span class="metric-name">최대 충격량</span><strong id="metricImpulse">—</strong><small id="impulseUnit">질량 입력 필요</small></article><article class="quality-card"><span class="metric-name">추적 연속률</span><strong id="metricTracking">—</strong><small>궤적 구간 내 검출 프레임 비율</small></article><article class="quality-card"><span class="metric-name">분석 상태</span><strong id="metricStatus" class="status-text">대기 중</strong><div class="quality-track"><i id="qualityBar"></i></div></article></div>
         <div class="results-head"><div><span class="step">02</span><h2>측정 결과</h2><span id="resultCount" class="count">0 tracks</span></div><button id="downloadBtn" class="download" disabled>↓ <span>CSV 내보내기</span></button></div>
-        <div class="table-wrap"><table><thead><tr><th>대상</th><th>프레임</th><th>시작 위치 <small>(x, y)</small></th><th>이동 거리</th><th>최대 속도</th><th>신뢰도</th></tr></thead><tbody id="resultsBody"><tr class="placeholder"><td colspan="6">영상을 추가하고 분석을 시작하면 결과가 표시됩니다.</td></tr></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>대상</th><th>프레임</th><th>시작 위치 <small>(x, y)</small></th><th>이동 거리</th><th>최대 속도</th><th>추적 연속률</th></tr></thead><tbody id="resultsBody"><tr class="placeholder"><td colspan="6">영상을 추가하고 분석을 시작하면 결과가 표시됩니다.</td></tr></tbody></table></div>
       </section>
     </section>
     <footer><span>© KINEMATIC LAB <i>·</i> IN-BROWSER PROCESSING</span><span>정량 측정은 카메라 각도, 조명, 프레임률 및 보정 정확도에 영향을 받습니다.</span></footer>
