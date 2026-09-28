@@ -32,7 +32,7 @@
   video.addEventListener('volumechange', () => $('muteBtn').textContent = video.muted ? '×' : '◖');
   $('muteBtn').onclick = () => video.muted = !video.muted;
   $('fullscreenBtn').onclick = () => $('player').requestFullscreen?.();
-  $('resetBtn').onclick = () => { if (analysis) return; tracks = []; samples = []; ctx.clearRect(0, 0, overlay.width, overlay.height); $('emptyOverlay').classList.remove('hidden'); $('videoBadge').textContent = 'READY'; $('metricStatus').textContent = '대기 중'; $('metricObjects').textContent = '—'; $('metricSpeed').textContent = '—'; $('metricAccel').textContent = '—'; $('resultsBody').innerHTML = '<tr class="placeholder"><td colspan="6">영상을 추가하고 분석을 시작하면 결과가 표시됩니다.</td></tr>'; $('downloadBtn').disabled = true; };
+  $('resetBtn').onclick = () => { if (analysis) return; tracks = []; samples = []; ctx.clearRect(0, 0, overlay.width, overlay.height); $('emptyOverlay').classList.remove('hidden'); $('videoBadge').textContent = 'READY'; $('metricStatus').textContent = '대기 중'; $('metricObjects').textContent = '—'; $('metricSpeed').textContent = '—'; $('metricAccel').textContent = '—'; $('metricImpulse').textContent = '—'; $('impulseUnit').textContent = '질량 입력 필요'; $('resultsBody').innerHTML = '<tr class="placeholder"><td colspan="6">영상을 추가하고 분석을 시작하면 결과가 표시됩니다.</td></tr>'; $('downloadBtn').disabled = true; };
   function updateClock() {
     const t = video.currentTime || 0, d = video.duration || 0;
     $('timeLabel').textContent = `${stamp(t)} / ${stamp(d)}`; $('seek').value = d ? t / d * 1000 : 0;
@@ -50,11 +50,17 @@
       ctx.strokeStyle = track.color + 'b8'; ctx.lineWidth = Math.max(2, overlay.width / 650); ctx.stroke();
     });
     tracks.forEach(track => {
-      const p = track.points.at(-1); if (!p) return;
+      const p = track.points.reduce((best, point) => Math.abs(point.t - video.currentTime) < Math.abs(best.t - video.currentTime) ? point : best, track.points[0]); if (!p) return;
       const x = p.x / work.width * overlay.width, y = p.y / work.height * overlay.height;
       const bw = p.w / work.width * overlay.width, bh = p.h / work.height * overlay.height;
-      ctx.strokeStyle = track.color; ctx.lineWidth = Math.max(1.5, overlay.width / 800); ctx.strokeRect(x - bw / 2, y - bh / 2, bw, bh);
-      ctx.fillStyle = track.color; ctx.font = `600 ${Math.max(11, overlay.width / 75)}px sans-serif`; ctx.fillText(`T${track.id}`, x + bw / 2 + 4, y - bh / 2);
+      ctx.fillStyle = track.color + '18'; ctx.fillRect(x - bw / 2, y - bh / 2, bw, bh);
+      ctx.strokeStyle = track.color; ctx.lineWidth = Math.max(2.5, overlay.width / 420); ctx.strokeRect(x - bw / 2, y - bh / 2, bw, bh);
+      const fontSize = Math.max(12, overlay.width / 65); ctx.font = `700 ${fontSize}px sans-serif`;
+      const label = `T${track.id}  ${Math.round(p.w)}×${Math.round(p.h)} px`;
+      const labelW = ctx.measureText(label).width + 12, labelH = fontSize + 8, labelX = Math.max(0, Math.min(overlay.width - labelW, x - bw / 2));
+      const labelY = Math.max(labelH, y - bh / 2);
+      ctx.fillStyle = track.color; ctx.fillRect(labelX, labelY - labelH, labelW, labelH);
+      ctx.fillStyle = '#101513'; ctx.fillText(label, labelX + 6, labelY - 5);
       ctx.beginPath(); ctx.arc(x, y, Math.max(2.5, overlay.width / 250), 0, Math.PI * 2); ctx.fill();
     }); lastRender = performance.now();
   }
@@ -151,11 +157,11 @@
   function scaleValue() { const cm = +$('knownLength').value, px = +$('pixelLength').value; return hasCalibration() ? cm / px : 1; }
   function trackStats(t) {
     const pts = t.points, scale = scaleValue() * video.videoWidth / work.width;
-    let distance = 0, maxSpeed = 0;
-    for (let i = 1; i < pts.length; i++) { const dt = pts[i].t - pts[i - 1].t; const dx = (pts[i].x - pts[i - 1].x) * scale, dy = (pts[i].y - pts[i - 1].y) * scale; distance += Math.hypot(dx, dy); if (dt > 0) maxSpeed = Math.max(maxSpeed, Math.hypot(dx, dy) / dt); }
+    let distance = 0, maxSpeed = 0, maxDeltaV = 0, priorVelocity = null;
+    for (let i = 1; i < pts.length; i++) { const dt = pts[i].t - pts[i - 1].t; const dx = (pts[i].x - pts[i - 1].x) * scale, dy = (pts[i].y - pts[i - 1].y) * scale; distance += Math.hypot(dx, dy); if (dt > 0) { const v = { x: dx / dt, y: dy / dt }; maxSpeed = Math.max(maxSpeed, Math.hypot(v.x, v.y)); if (priorVelocity) maxDeltaV = Math.max(maxDeltaV, Math.hypot(v.x-priorVelocity.x, v.y-priorVelocity.y)); priorVelocity = v; } }
     const start = pts[0], sourceScale = scaleValue();
     const x = (start.x / work.width * video.videoWidth) * sourceScale, y = (start.y / work.height * video.videoHeight) * sourceScale;
-    return { distance, maxSpeed, x, y };
+    return { distance, maxSpeed, maxDeltaV, x, y };
   }
   function summarize() {
     let speed = 0, accels = [];
@@ -163,7 +169,11 @@
     const unit = hasCalibration() ? 'cm/s' : 'px/s'; $('metricSpeed').textContent = speed ? speed.toFixed(1) : '—'; $('speedUnit').textContent = speed ? unit : '속도 계산 불가';
     const accel = accels.length ? accels.reduce((a, b) => a + b, 0) / accels.length : NaN;
     $('metricAccel').textContent = Number.isFinite(accel) ? `${accel.toFixed(1)} ${hasCalibration() ? 'cm' : 'px'}/s²` : '—';
+    const mass = +$('massKg').value;
+    if (mass > 0 && hasCalibration()) { const impulse = Math.max(0, ...tracks.map(t => trackStats(t).maxDeltaV * mass / 100)); $('metricImpulse').textContent = `${impulse.toFixed(3)} N·s`; $('impulseUnit').textContent = '최대 |m·Δv| 추정'; }
+    else { $('metricImpulse').textContent = '—'; $('impulseUnit').textContent = mass > 0 ? '길이 보정도 필요' : '질량 입력 필요'; }
   }
+  $('massKg').addEventListener('input', () => { if (tracks.length && !analysis) summarize(); });
   function regression(points) {
     // y = a*t² + b*t + c; fit by solving the 3x3 normal equations.
     const m = [[0,0,0,0],[0,0,0,0],[0,0,0,0]];
@@ -178,8 +188,8 @@
     }).join('');
   }
   $('downloadBtn').onclick = () => {
-    const rows = [['track_id','time_s','frame_sample','x','y','width_px','height_px','speed','unit']];
-    tracks.forEach((t, i) => t.points.forEach((p, j) => { const scale=scaleValue()*video.videoWidth/work.width, yScale=scaleValue()*video.videoHeight/work.height, unit=hasCalibration()?'cm':'px'; let speed=''; if(j){const q=t.points[j-1],dt=p.t-q.t;speed=dt>0?(Math.hypot((p.x-q.x)*scale,(p.y-q.y)*yScale)/dt).toFixed(4):'';} rows.push([`T${i+1}`,p.t.toFixed(4),p.frame,(p.x*scale).toFixed(3),(p.y*yScale).toFixed(3),p.w,p.h,speed,unit]); }));
+    const rows = [['track_id','time_s','frame_sample','x','y','box_width_work_px','box_height_work_px','speed','acceleration_y','impulse_magnitude','unit']];
+    tracks.forEach((t, i) => t.points.forEach((p, j) => { const scale=scaleValue()*video.videoWidth/work.width, yScale=scaleValue()*video.videoHeight/work.height, unit=hasCalibration()?'cm':'px'; let speed='', acceleration='', impulse=''; if(j){const q=t.points[j-1],dt=p.t-q.t;speed=dt>0?(Math.hypot((p.x-q.x)*scale,(p.y-q.y)*yScale)/dt).toFixed(4):''; if(j>1){const r=t.points[j-2],dt0=q.t-r.t,dt1=p.t-q.t;if(dt0>0&&dt1>0){const vx0=(q.x-r.x)*scale/dt0,vy0=(q.y-r.y)*yScale/dt0,vx1=(p.x-q.x)*scale/dt1,vy1=(p.y-q.y)*yScale/dt1;acceleration=((vy1-vy0)/((dt0+dt1)/2)).toFixed(4);const mass=+$('massKg').value;if(mass>0&&hasCalibration())impulse=(mass*Math.hypot(vx1-vx0,vy1-vy0)/100).toFixed(6);}}} rows.push([`T${i+1}`,p.t.toFixed(4),p.frame,(p.x*scale).toFixed(3),(p.y*yScale).toFixed(3),p.w,p.h,speed,acceleration,impulse,unit]); }));
     const csv = rows.map(r => r.map(v => `"${String(v).replaceAll('"','""')}"`).join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'})); a.download='kinematic-tracks.csv'; a.click(); URL.revokeObjectURL(a.href);
   };
 })();
